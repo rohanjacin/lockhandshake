@@ -4,6 +4,7 @@ var hsm = require('./hsm.js');
 const util = require('util');
 const EventEmitter = require('events');
 var ServerNounce = require('./server_nounce.js');
+const { LockProver } = require("./prover.js");
 
 const WebSocket = require('ws');
 
@@ -37,6 +38,7 @@ class ServerHandshake extends EventEmitter {
     this.nounce = this.servernounce.nounce;
     this.lock_nounce = 0;
     this.ws;
+    this.lockprover = new LockProver();
 
     this.handle = function (ws) {
       this.ws = ws;
@@ -82,10 +84,10 @@ class ServerHandshake extends EventEmitter {
 
   }.bind(this);
 
-  solve = function (nounce) {
+  solve = async function (nounce) {
      
     console.log("In solve(hs):" + JSON.stringify(nounce)); 
-    return this.servernounce.solve.call(null, nounce);
+    return await this.servernounce.solve.call(null, nounce);
 
   }.bind(this);
 
@@ -130,7 +132,7 @@ ServerHandshake.prototype.waitChallenge = function () {
   return true;
 }
 
-ServerHandshake.prototype.solveChallenge = function () {
+ServerHandshake.prototype.solveChallenge = async function () {
   let now = new BN(Math.floor(Date.now()/1000), 16);
 
   console.log("solveChallenge");
@@ -144,7 +146,7 @@ ServerHandshake.prototype.solveChallenge = function () {
   let nounce = this.lock_nounce;
   console.log("nounce:" + JSON.stringify(nounce));
 
-  let match = this.solve(nounce);
+  let match = await this.solve(nounce);
 
   //Send server challenge only if Pm matches
   if (match == true) {
@@ -170,7 +172,7 @@ ServerHandshake.prototype.createChallenge = function () {
   return true;
 }
 
-ServerHandshake.prototype.sendChallenge = function () {
+ServerHandshake.prototype.sendChallenge = async function () {
   let now = new BN(Math.floor(Date.now()/1000), 16);
 
   if (this.isRefreshed(now) == false) {
@@ -182,7 +184,15 @@ ServerHandshake.prototype.sendChallenge = function () {
 
   //this.frame.sendFrame('Response', this.nounce);
   //this.postEventToContract("response", this.nounce);
-  let msg = {type: 'Response', nonce: this.nounce}
+
+  // Create proof here
+  console.log("\n\nproof start");
+  this.lockprover.update();
+  let { proof, publicSignals } = await this.lockprover.prove();  
+  console.log("\n\nproof done");
+  
+  let msg = {type: 'Response', nonce: this.nounce,
+      ownerproof: {proof, publicSignals}};
   this.ws.send(JSON.stringify(msg));
   this.postEvent('ack_pending');
   return true;
@@ -265,10 +275,10 @@ const machine = hsm.createMachine({
 
         target: 'response',
 
-        action() {
+        async action() {
 
           console.log('transition action for "challenge" in "waiting" state')
-          server_hs.solveChallenge();
+          await server_hs.solveChallenge();
         },
 
       },
@@ -311,10 +321,10 @@ const machine = hsm.createMachine({
 
         target: 'ack_pending',
 
-        action() {
+        async action() {
 
           console.log('transition action for "send" in "challenge" state')
-          server_hs.sendChallenge();
+          await server_hs.sendChallenge();
         },
 
       },
@@ -401,9 +411,9 @@ let state = machine.value
 //ServerHandshake.prototype.
 var server_hs = new ServerHandshake();
 
-server_hs.on('state_event', (event) => {
+server_hs.on('state_event', async (event) => {
 
-  state = machine.transition(state, event);
+  state = await machine.transition(state, event);
 });
 
 /*server_hs.frame.on('request', (data) => {

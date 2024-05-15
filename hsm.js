@@ -4,7 +4,7 @@ function createMachine(stateMachineDefinition) {
 
     value: stateMachineDefinition.initialState,
 
-    transition(currentState, event) {
+    async transition(currentState, event) {
 
       const currentStateDefinition = stateMachineDefinition[currentState]
 
@@ -22,7 +22,7 @@ function createMachine(stateMachineDefinition) {
 
         stateMachineDefinition[destinationState]
 
-      destinationTransition.action()
+      await destinationTransition.action()
 
       currentStateDefinition.actions.onExit()
 

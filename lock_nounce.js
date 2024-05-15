@@ -89,10 +89,10 @@ LockNounce.prototype.genNounce = function () {
 
 LockNounce.prototype.solveNounce = function (nounce, seed_obj, salt_obj) {
 
-	let nounce0 = new Buffer.from(nounce.data.slice(0, 65));
-	let nounce1 = new Buffer.from(nounce.data.slice(65, 97));
-	let seed = new Buffer.from(nounce.data.slice(97, 162));
-	let counter = new Buffer.from(nounce.data.slice(162, 163));
+	let nounce0 = new Buffer.from(nounce.slice(0, 65));
+	let nounce1 = new Buffer.from(nounce.slice(65, 97));
+	let seed = new Buffer.from(nounce.slice(97, 162));
+	let counter = new Buffer.from(nounce.slice(162, 163));
 
 	let server_pub = nounce0;
 	//let server_pub = new BN(nounce0, 16);

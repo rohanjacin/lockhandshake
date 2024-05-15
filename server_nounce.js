@@ -52,11 +52,11 @@ ServerNounce = function ServerNounce (ts, ct) {
     	this.nounce = this.genNounce();
     }.bind(this);
 
-    this.solve = function (nounce) {
+    this.solve = async function (nounce) {
 
     	console.log("In solve(sn):" + JSON.stringify(nounce)); 
 
-    	return this.solveNounce(nounce, seed, salt);
+    	return await this.solveNounce(nounce, seed, salt);
 
     }.bind(this);    
 };
@@ -107,7 +107,7 @@ ServerNounce.prototype.genNounce = function () {
 	return nounce;
 }
 
-ServerNounce.prototype.solveNounce = function (nounce, seed_obj, salt_obj) {
+ServerNounce.prototype.solveNounce = async function (nounce, seed_obj, salt_obj) {
 
 	let nounce0 = new Buffer.from(nounce.slice(0, 65));
 	let nounce1 = new Buffer.from(nounce.slice(65, 97));
@@ -122,7 +122,7 @@ ServerNounce.prototype.solveNounce = function (nounce, seed_obj, salt_obj) {
 	//this.lock_seed = this.lock_seed.toString();
 	let lock_counter = new BN(counter, 16);
 
-	let {Pm, l_seed} = seed_obj.retrieveSeed(lock_pub, lock_seed);
+	let {Pm, l_seed} = await seed_obj.retrieveSeed(lock_pub, lock_seed);
 	Pm = Pm.getX(); Pm = Pm.toString();
 
 	console.log("pm:" + Pm);

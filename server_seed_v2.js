@@ -122,7 +122,7 @@ ServerSeed.prototype.genSeed = function (pm, lock_pub) {
 	return ret;
 }
 
-ServerSeed.prototype.retrieveSeed = function (pub, seed) {
+ServerSeed.prototype.retrieveSeed = async function (pub, seed) {
 
 	let cipher_point_1 = this.hscurve.createPointFromPublic('secp256k1', pub);
 	let cipher_point_2 = this.hscurve.createPointFromPublic('secp256k1', seed);

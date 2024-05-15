@@ -25,8 +25,8 @@ LockSeed = function LockSeed () {
 
 	this.session = function (serverPb) {
 
-		//console.log("serverPb:" + JSON.stringify(serverPb));
-		let spub = new Buffer.from(serverPb.data.slice(0, 65));
+		console.log("serverPb:" + JSON.stringify(serverPb));
+		let spub = new Buffer.from(serverPb.slice(0, 65));
 		//let sp = new BN(spub, 16);
 		//console.log("sp:" + sp.toString());
 	    newcurve = new HSCurve();

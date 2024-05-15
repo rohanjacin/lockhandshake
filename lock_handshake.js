@@ -1,63 +1,91 @@
 var BN = require('bn.js');
-var Frame = require('./socket/udp_lock.js');
+//var Frame = require('./socket/udp_lock.js');
 var hsm = require('./hsm.js');
 const util = require('util');
 const EventEmitter = require('events');
 var LockNounce = require('./lock_nounce.js');
 
+const WebSocket = require('ws');
+
 const HS = {
   REFRESH_TIMEOUT: 30000
 }
 
-var LockHandshake;
-(function() {
-    var instance;
+class LockHandshake extends EventEmitter {
+  constructor () {
+    if (LockHandshake._instance) {
+      throw new Error("LockHandshake can't be instantiated more than once")
+    }
 
-LockHandshake = function LockHandshake () {
-    if (instance)
-        return instance;
+    super();
+    LockHandshake._instance = this;
 
-  instance = this;
-  EventEmitter.call(this);
+    this.WSS = new WebSocket.Server({ port : 8547});
 
-  this.start = new BN();
-  this.end = new BN();
-  this.frame = new Frame();
+    this.WSS.on('connection', function connection(ws) {
+        this.handle(ws);
+    }.bind(this));
 
-  let counter = new BN(0, 16);
-  let counter_steps = new BN(1, 16);
-  let time = new BN(Math.floor(Date.now()/1000), 16);
-  let locknounce = new LockNounce(time, counter);
-  this.nounce = this.server_nounce = this.Pb = 0;
+    this.start = new BN();
+    this.end = new BN();
+    //this.frame = new Frame();
 
-  this.session = function () {
-    counter = counter.add(counter_steps);
-    time = new BN(Math.floor(Date.now()/1000), 16);
-    console.log("new session " + "ts:" + time +
-     " counter:" + counter + " Pb:" + JSON.stringify(this.Pb));
+    this.counter = new BN(0, 16);
+    this.counter_steps = new BN(1, 16);
+    this.time = new BN(Math.floor(Date.now()/1000), 16);
+    this.locknounce = new LockNounce(this.time, this.counter);
+    this.nounce = this.server_nounce = this.Pb = 0;
 
-    locknounce.session.call(null, this.Pb);
+    this.handle = function (ws) {
+      this.ws = ws;
+      this.ws.on('error', console.error);
+
+      this.ws.on('message', async function message(event) {
+        console.log('received: %s', event);
+        let msg = JSON.parse(event);
+
+        switch(msg.type) {
+          case 'Request':
+            console.log("Request received:" + JSON.stringify(msg.nonce));
+            this.Pb = msg.nonce;
+            this.postEvent('request');
+          break;
+
+          case 'Response':
+            console.log("Response received:" + JSON.stringify(msg.nonce));
+            this.server_nounce = msg.nonce;
+            this.postEvent('response');
+          break;        
+        }
+      }.bind(this));
+    };
+  }
+
+  session = function () {
+    this.counter = this.counter.add(this.counter_steps);
+    this.time = new BN(Math.floor(Date.now()/1000), 16);
+    console.log("new session " + "ts:" + this.time +
+     " counter:" + this.counter + " Pb:" + JSON.stringify(this.Pb));
+
+    this.locknounce.session.call(null, this.Pb);
   }.bind(this);
 
-  this.update = function () {
+  update = function () {
      
-    locknounce.update.call(null, time, counter);
-    this.nounce = locknounce.nounce;
+    this.locknounce.update.call(null, this.time, this.counter);
+    this.nounce = this.locknounce.nounce;
     console.log("NOUNCE:" + JSON.stringify(this.nounce));
   }.bind(this);
 
-  this.solve = function (nounce) {
+  solve = function (nounce) {
      
-    return locknounce.solve.call(null, nounce);
+    return this.locknounce.solve.call(null, nounce);
 
   }.bind(this);
 
-  this.isRefreshed = (n)=>{((n - this.start) > HS.REFRESH_TIMEOUT)? true:false };
-  this.postEvent = (e)=>{process.nextTick(() => {this.emit('state_event', e);})};
+  isRefreshed = (n)=>{((n - this.start) > HS.REFRESH_TIMEOUT)? true:false };
+  postEvent = (e)=>{process.nextTick(() => {this.emit('state_event', e);})};
 };
-}());
-
-util.inherits(LockHandshake, EventEmitter);
 
 LockHandshake.prototype.registerRequest = function () {
   let now = new BN(Math.floor(Date.now()/1000), 16);
@@ -101,8 +129,11 @@ LockHandshake.prototype.sendChallenge = function () {
     return false;
   }
 
-  this.frame.sendFrame('Challenge', this.nounce);
-  //this.postEvent('response_pending');
+  //this.frame.sendFrame('Challenge', this.nounce);
+  let ret = {type: 'Challenge', nonce: this.nounce} 
+  this.ws.send(JSON.stringify(ret));
+
+  this.postEvent('response_pending');
   return true;
 }
 
@@ -172,6 +203,8 @@ const machine = hsm.createMachine({
     actions: {
 
       onEnter() {
+
+        //console.log('request: onEnter')
 
         lock_hs.registerRequest();
       },
@@ -244,13 +277,13 @@ const machine = hsm.createMachine({
 
       onEnter() {
 
-        console.log('response_pending: onEnter')
+        //console.log('response_pending: onEnter')
 
       },
 
       onExit() {
 
-        console.log('response_pending: onExit')
+        //console.log('response_pending: onExit')
 
       },
 
@@ -280,13 +313,13 @@ const machine = hsm.createMachine({
 
       onEnter() {
 
-        console.log('ack: onEnter')
+        //console.log('ack: onEnter')
 
       },
 
       onExit() {
 
-        console.log('ack: onExit')
+        //console.log('ack: onExit')
 
       },
 
@@ -318,12 +351,12 @@ console.log(`current state: ${state}`)
 //LockHandshake.prototype.
 var lock_hs = new LockHandshake();
 
-lock_hs.on('state_event', (event) => {
+lock_hs.on('state_event', async (event) => {
 
-  state = machine.transition(state, event);
+  state = await machine.transition(state, event);
 });
 
-lock_hs.frame.on('request', (data) => {
+/*lock_hs.frame.on('request', (data) => {
 
   lock_hs.Pb = data.pb;
   lock_hs.postEvent('request');
@@ -334,5 +367,5 @@ lock_hs.frame.on('response', (data) => {
   lock_hs.server_nounce = data.nounce; //data.slice(0, 131);
   lock_hs.postEvent('response');
 });
-
+*/
 module.exports = LockHandshake;
