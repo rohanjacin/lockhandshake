@@ -2,6 +2,7 @@ const HSCurve = require('./hs_curve25519.js');
 const PreShared = require('./lock_preshared.js');
 const Private = require('./lock_private.js');
 const BN = require('bn.js');
+const INTERFACE_S = "web";
 
 var pm;
 var LockSeed;
@@ -29,7 +30,13 @@ LockSeed = function LockSeed () {
 	this.session = function (serverPb) {
 
 		console.log("serverPb:" + JSON.stringify(serverPb));
-		let spub = new Buffer.from(serverPb.slice(0, 65));
+		let spub;
+		if (INTERFACE_S == "web3") {
+			spub = new Buffer.from(serverPb.slice(0, 65));
+		}
+		else {
+			spub = new Buffer.from(serverPb.data.slice(0, 65));			
+		}
 		//let sp = new BN(spub, 16);
 		//console.log("sp:" + sp.toString());
 	    newcurve = new HSCurve();

@@ -1,5 +1,6 @@
+const INTERFACE = "web";
 var BN = require('bn.js');
-//var Frame = require('./socket/udp_lock.js');
+var Frame = require('./socket/udp_lock.js');
 var hsm = require('./hsm.js');
 const util = require('util');
 const EventEmitter = require('events');
@@ -20,15 +21,17 @@ class LockHandshake extends EventEmitter {
     super();
     LockHandshake._instance = this;
 
-    this.WSS = new WebSocket.Server({ port : 8547});
+    if (INTERFACE == "web") {
+      this.WSS = new WebSocket.Server({ port : 8547});
 
-    this.WSS.on('connection', function connection(ws) {
-        this.handle(ws);
-    }.bind(this));
+      this.WSS.on('connection', function connection(ws) {
+          this.handle(ws);
+      }.bind(this));
+    }
 
     this.start = new BN();
     this.end = new BN();
-    //this.frame = new Frame();
+    this.frame = new Frame();
 
     this.counter = new BN(0, 16);
     this.counter_steps = new BN(1, 16);
@@ -36,29 +39,31 @@ class LockHandshake extends EventEmitter {
     this.locknounce = new LockNounce(this.time, this.counter);
     this.nounce = this.server_nounce = this.Pb = 0;
 
-    this.handle = function (ws) {
-      this.ws = ws;
-      this.ws.on('error', console.error);
+    if (INTERFACE == "web") {
+      this.handle = function (ws) {
+        this.ws = ws;
+        this.ws.on('error', console.error);
 
-      this.ws.on('message', async function message(event) {
-        console.log('received: %s', event);
-        let msg = JSON.parse(event);
+        this.ws.on('message', async function message(event) {
+          console.log('received: %s', event);
+          let msg = JSON.parse(event);
 
-        switch(msg.type) {
-          case 'Request':
-            console.log("Request received:" + JSON.stringify(msg.nonce));
-            this.Pb = msg.nonce;
-            this.postEvent('request');
-          break;
+          switch(msg.type) {
+            case 'Request':
+              console.log("Request received:" + JSON.stringify(msg.nonce));
+              this.Pb = msg.nonce;
+              this.postEvent('request');
+            break;
 
-          case 'Response':
-            console.log("Response received:" + JSON.stringify(msg.nonce));
-            this.server_nounce = msg.nonce;
-            this.postEvent('response');
-          break;        
-        }
-      }.bind(this));
-    };
+            case 'Response':
+              console.log("Response received:" + JSON.stringify(msg.nonce));
+              this.server_nounce = msg.nonce;
+              this.postEvent('response');
+            break;        
+          }
+        }.bind(this));
+      };
+    }
   }
 
   session = function () {
@@ -129,9 +134,13 @@ LockHandshake.prototype.sendChallenge = function () {
     return false;
   }
 
-  //this.frame.sendFrame('Challenge', this.nounce);
-  let ret = {type: 'Challenge', nonce: this.nounce} 
-  this.ws.send(JSON.stringify(ret));
+  if (INTERFACE == "web") {
+    let ret = {type: 'Challenge', nonce: this.nounce} 
+    this.ws.send(JSON.stringify(ret));    
+  }
+  else {
+    this.frame.sendFrame('Challenge', this.nounce);
+  }
 
   this.postEvent('response_pending');
   return true;
@@ -356,16 +365,18 @@ lock_hs.on('state_event', async (event) => {
   state = await machine.transition(state, event);
 });
 
-/*lock_hs.frame.on('request', (data) => {
+if (INTERFACE != "web") {
+  lock_hs.frame.on('request', (data) => {
 
-  lock_hs.Pb = data.pb;
-  lock_hs.postEvent('request');
-});
+    lock_hs.Pb = data.pb;
+    lock_hs.postEvent('request');
+  });
 
-lock_hs.frame.on('response', (data) => {
+  lock_hs.frame.on('response', (data) => {
 
-  lock_hs.server_nounce = data.nounce; //data.slice(0, 131);
-  lock_hs.postEvent('response');
-});
-*/
+    lock_hs.server_nounce = data.nounce; //data.slice(0, 131);
+    lock_hs.postEvent('response');
+  });
+}
+
 module.exports = LockHandshake;
