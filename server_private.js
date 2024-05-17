@@ -25,4 +25,5 @@ let lock_lcs = new BN('216936d3cd6e53fec0a4e231fdd6dc5c692cc7609525a7b2c9562d608
 module.exports.server_priv = server_priv;
 module.exports.server_password = server_password;
 module.exports.lock_pm = lock_pm;
-module.exports.lock_lcs = lock_lcs;
+module.exports.lock_pm = lock_pm;
+module.exports.lock_password = lock_password;

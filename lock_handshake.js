@@ -346,7 +346,7 @@ const machine = hsm.createMachine({
 
 let state = machine.value
 
-console.log(`current state: ${state}`)
+//console.log(`current state: ${state}`)
 
 //LockHandshake.prototype.
 var lock_hs = new LockHandshake();

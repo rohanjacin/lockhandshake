@@ -22,6 +22,9 @@ LockSeed = function LockSeed () {
 	var C = this.hscurve.getCurve('secp256k1');
 	this.seed = this.rpv = 0;
 	this.pswd = Private.lock_password;
+	let _pm = C.point(this.pswd[0], this.pswd[1]);
+	console.log("PM(lock).x:" + _pm.x);
+	console.log("PM(lock).y:" + _pm.y);
 
 	this.session = function (serverPb) {
 
@@ -46,7 +49,8 @@ LockSeed = function LockSeed () {
 		}		
 
 		this.Pm = C.point(this.pswd[0], this.pswd[1]);
-		console.log("PMM:" + this.Pm.x);
+		console.log("PM(lock).x:" + this.Pm.x);
+		console.log("PM(lock).y:" + this.Pm.y);
 		if (this.Pm.validate()) {
 			//console.log("this.Pm Valid point on curve");
 		}

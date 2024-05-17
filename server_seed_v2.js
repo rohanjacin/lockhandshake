@@ -23,12 +23,17 @@ ServerSeed = function ServerSeed () {
 	this.seed = this.rpv = this.rp = 0, this.pub = 0;
 	this.pswd = Private.server_password;
 	this.lock_pm = Private.lock_pm;
+	this._lck_pswd = Private.lock_password;
 	this.lock_pub = 0;
 	this.cipherPt1 = 0;
 	this.cipherPt2 = 0;
 
 	this.Pm = C.point(this.pswd[0], this.pswd[1]);
-	console.log("PM:" + this.Pm.x);
+	let _pm = C.point(this._lck_pswd[0], this._lck_pswd[1]);
+
+	console.log("PM(server).x:" + _pm.x);
+	console.log("PM(server).y:" + _pm.y);
+
 	if (this.Pm.validate()) {
 		//console.log("this.Pm Valid point on curve");
 	}
