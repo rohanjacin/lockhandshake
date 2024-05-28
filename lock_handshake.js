@@ -1,4 +1,3 @@
-const INTERFACE = "web";
 var BN = require('bn.js');
 var Frame = require('./socket/udp_lock.js');
 var hsm = require('./hsm.js');
@@ -13,15 +12,16 @@ const HS = {
 }
 
 class LockHandshake extends EventEmitter {
-  constructor () {
+  constructor (intf) {
     if (LockHandshake._instance) {
       throw new Error("LockHandshake can't be instantiated more than once")
     }
 
     super();
     LockHandshake._instance = this;
+    this.intf = intf;
 
-    if (INTERFACE == "web") {
+    if (this.intf == "web") {
       this.WSS = new WebSocket.Server({ port : 8547});
 
       this.WSS.on('connection', function connection(ws) {
@@ -31,15 +31,16 @@ class LockHandshake extends EventEmitter {
 
     this.start = new BN();
     this.end = new BN();
-    this.frame = new Frame();
-
+    if (this.intf != "web") {
+      this.frame = new Frame();
+    }
     this.counter = new BN(0, 16);
     this.counter_steps = new BN(1, 16);
     this.time = new BN(Math.floor(Date.now()/1000), 16);
-    this.locknounce = new LockNounce(this.time, this.counter);
+    this.locknounce = new LockNounce(this.time, this.counter, this.intf);
     this.nounce = this.server_nounce = this.Pb = 0;
 
-    if (INTERFACE == "web") {
+    if (this.intf == "web") {
       this.handle = function (ws) {
         this.ws = ws;
         this.ws.on('error', console.error);
@@ -134,7 +135,7 @@ LockHandshake.prototype.sendChallenge = function () {
     return false;
   }
 
-  if (INTERFACE == "web") {
+  if (this.intf == "web") {
     let ret = {type: 'Challenge', nonce: this.nounce} 
     this.ws.send(JSON.stringify(ret));    
   }
@@ -358,14 +359,14 @@ let state = machine.value
 //console.log(`current state: ${state}`)
 
 //LockHandshake.prototype.
-var lock_hs = new LockHandshake();
+var lock_hs = new LockHandshake(process.env.INTERFACE);
 
 lock_hs.on('state_event', async (event) => {
 
   state = await machine.transition(state, event);
 });
 
-if (INTERFACE != "web") {
+if (lock_hs.intf != "web") {
   lock_hs.frame.on('request', (data) => {
 
     lock_hs.Pb = data.pb;

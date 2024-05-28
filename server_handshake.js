@@ -116,7 +116,7 @@ ServerHandshake.prototype.sendRequest = async function () {
   let _Pb = Pb.toString();
   //this.frame.sendFrame('Request', Pb);
   this.postEvent('request');
-  return {type: "Request", nonce0: Pb};
+  return {type: "Request", nonce: Pb};
 }
 
 ServerHandshake.prototype.waitChallenge = function () {
@@ -228,9 +228,9 @@ const machine = hsm.createMachine({
         async action() {
 
           console.log('transition action for "start" in "idle" state');
-          let {type, nonce0} = await server_hs.sendRequest();
+          let {type, nonce} = await server_hs.sendRequest();
           //console.log("RETT:"+ ret); 
-          server_hs.ws.send(JSON.stringify({type, nonce0}));
+          server_hs.ws.send(JSON.stringify({type, nonce}));
         },
 
       },

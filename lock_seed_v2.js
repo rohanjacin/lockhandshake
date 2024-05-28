@@ -11,14 +11,14 @@ var LockSeed;
 
 var counter = 0;
 
-LockSeed = function LockSeed () {
+LockSeed = function LockSeed (intf) {
     if (instance)
         return instance;
 
     counter++;
 
     instance = this;
-
+ 	this.intf = intf;
     this.hscurve = new HSCurve();
 	var C = this.hscurve.getCurve('secp256k1');
 	this.seed = this.rpv = 0;
@@ -31,7 +31,8 @@ LockSeed = function LockSeed () {
 
 		console.log("serverPb:" + JSON.stringify(serverPb));
 		let spub;
-		if (INTERFACE_S == "web3") {
+
+		if (this.intf == "web") {
 			spub = new Buffer.from(serverPb.slice(0, 65));
 		}
 		else {

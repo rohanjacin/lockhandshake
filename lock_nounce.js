@@ -4,7 +4,6 @@ var createHmac = require( 'crypto' ).createHmac;
 const PreShared = require('./lock_preshared.js');
 var LockSeed = require('./lock_seed_v2.js');
 var LockSalt = require('./lock_salt.js');
-const INTERFACE_N = "web";
 
 var LockNounce;
 (function() {
@@ -12,14 +11,14 @@ var LockNounce;
 
 var counter = 0;
 
-LockNounce = function LockNounce (ts, ct) {
+LockNounce = function LockNounce (ts, ct, intf) {
     if (instance)
         return instance;
 
     instance = this;
-
-    let seed = new LockSeed();
-	let salt = new LockSalt();
+    this.intf = intf;
+    let seed = new LockSeed(this.intf);
+	let salt = new LockSalt(this.intf);
 	this.rpv = this.salt = this.ts = this.seed = this.ct = this.lcs = 0;
 	this.init = function (_ts, _ct) {
 	    
@@ -95,7 +94,7 @@ LockNounce.prototype.solveNounce = function (nounce, seed_obj, salt_obj) {
 	let seed;
 	let counter;
 
-	if (INTERFACE_N == "web3") {
+	if (this.intf == "web") {
 		nounce0 = new Buffer.from(nounce.slice(0, 65));
 		nounce1 = new Buffer.from(nounce.slice(65, 97));
 		seed = new Buffer.from(nounce.slice(97, 162));

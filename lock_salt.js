@@ -8,15 +8,16 @@ var LockSalt;
 
 var counter = 0;
 
-LockSalt = function LockSalt () {
+LockSalt = function LockSalt (intf) {
     if (instance)
         return instance;
 
     counter++;
 
     instance = this;
-
-    let ls = new LockSeed();
+    this.intf = intf;
+    
+    let ls = new LockSeed(this.intf);
     this.startTs = this.endTs = this.seed = this.salt =0;
 
     this.session = function () {
