@@ -1,11 +1,12 @@
 var BN = require('bn.js');
 var createHash = require( 'crypto' ).createHash;
 var createHmac = require( 'crypto' ).createHmac;
+const Ethers = require('ethers');
 const PreShared = require('./lock_preshared.js');
 var LockSeed = require('./lock_seed_v2.js');
 var LockSalt = require('./lock_salt.js');
-
 var LockNounce;
+
 (function() {
     var instance;
 
@@ -29,9 +30,18 @@ LockNounce = function LockNounce (ts, ct, intf) {
 
 	this.init(ts, ct);
 
-    this.session = function (serverPb) {
-    	seed.session.call(null, serverPb);
-    	salt.session.call(null);
+    this.session = async function (serverPb, validation) {
+
+		if (validation) {
+			let _data;
+			this.inf == "web" ? _data = new Buffer.from(serverPb.slice(0, 65)) :
+						_data = new Buffer.from(serverPb.data.slice(0, 65));
+
+			if (false == await this.validate(_data, validation))
+			return;
+		}
+		await seed.session.call(null, serverPb);
+		await salt.session.call(null);
     }.bind(this);
 
     this.update = function (ts_, ct_) {
@@ -47,11 +57,80 @@ LockNounce = function LockNounce (ts, ct, intf) {
     	this.nounce = this.genNounce();
     }.bind(this);
 
-    this.solve = function (nounce) {
+    this.solve = async function (nounce, guest_secret, validation) {
 
-    	return this.solveNounce(nounce, seed, salt);
+		if (validation) {
+			let _data;
+			this.inf == "web" ? _data = new Buffer.from(nounce.slice(0, 65)) :
+							_data = new Buffer.from(nounce.data.slice(0, 65));
 
-    }.bind(this);    
+			if (false == await this.validate(_data, validation))
+				return;
+		}
+		return await this.solveNounce(nounce, seed, salt, guest_secret);
+
+    }.bind(this);
+
+    this.validate = async function (data, validation) {
+		let ownersig, _ownersig;
+		let guestsig, _guestsig;
+		let guest, _guest;
+		let _spub;
+
+		if (this.intf == "web") {
+			ownersig = new Buffer.from(validation.slice(0, 65));
+			_ownersig = "0x" + ownersig.toString('hex');
+			guestsig = new Buffer.from(validation.slice(65, 130));
+			_guestsig = "0x" + guestsig.toString('hex');
+			guest = new Buffer.from(validation.slice(130, 151));
+			_guest = "0x" + guest.toString('hex');
+		}
+		else {
+			ownersig = new Buffer.from(validation.data.slice(0, 65));
+			_ownersig = "0x" + ownersig.toString('hex');
+			guestsig = new Buffer.from(validation.data.slice(65, 130));
+			_guestsig = "0x" + guestsig.toString('hex');
+			guest = new Buffer.from(validation.data.slice(130, 151));
+			_guest = "0x" + guest.toString('hex');
+		}
+
+		let ret = false;
+
+		console.log("ownersig:", _ownersig);
+		console.log("guestsig:", _guestsig);
+		console.log("guest:", guest);
+
+		// Verify owner signature
+	    let hash = createHash('sha256');
+	    hash.update(data);
+	    hash.update(guest);
+	    let msg = hash.digest();
+
+	    let address = Ethers.verifyMessage(msg, _ownersig);
+	    console.log("owner's address:", address);
+	    console.log("PreShared.server_address:", PreShared.server_address);
+
+	    // Check if owner's address matches
+	    if (PreShared.server_address == address) {
+
+			// Verify guest's signature
+			hash = createHash('sha256');
+			hash.update(ownersig);
+			msg = hash.digest();
+
+			address = Ethers.verifyMessage(msg, _guestsig);
+			address = address.toLowerCase();
+			console.log("guest addess:", address);
+			console.log("_guest:", _guest);
+
+			// Check if guest's signature matches
+			if (_guest == address) {
+				ret = true;
+			}
+	    }
+
+	    return ret;
+	}
 };
 }());
 
@@ -87,7 +166,8 @@ LockNounce.prototype.genNounce = function () {
 	return nounce;
 }
 
-LockNounce.prototype.solveNounce = function (nounce, seed_obj, salt_obj) {
+LockNounce.prototype.solveNounce = async function (nounce, seed_obj,
+									salt_obj, guest_secret) {
 
 	let nounce0;
 	let nounce1;
@@ -119,14 +199,13 @@ LockNounce.prototype.solveNounce = function (nounce, seed_obj, salt_obj) {
 	console.log("server_seed:" + JSON.stringify(server_seed));
 	console.log("server_counter:" + JSON.stringify(server_counter));
 */
-	let {Pm, s_seed} = seed_obj.retrieveSeed(server_pub, server_seed);
-	Pm = Pm.getX(); Pm = Pm.toString();
+	let result = await seed_obj.retrieveSeed(server_pub, server_seed, guest_secret);
+	return result;
 
 	//console.log("server pm.x:" + Pm.x);
 	//console.log("server pm.y:" + Pm.y);
 	//if (Pm == this.pm)
 	//	console.log("\nMMMMMATCCHHH(lock)");
-	return true;
 	
 /*	console.log('_lock_seed:' + (s_seed instanceof BN));
 	let _seed = s_seed.toString(); 

@@ -1,7 +1,10 @@
 {
   "dependencies": {
+    "@panva/hkdf": "^1.1.1",
     "bn.js": "^5.2.1",
     "elliptic": "^6.5.5",
+    "ethers": "^6.12.2",
+    "hotp": "^3.0.0",
     "snarkjs": "^0.7.4",
     "ws": "^8.17.0"
   }

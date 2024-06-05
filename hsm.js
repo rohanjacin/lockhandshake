@@ -26,7 +26,7 @@ function createMachine(stateMachineDefinition) {
 
       currentStateDefinition.actions.onExit()
 
-      destinationStateDefinition.actions.onEnter()
+      await destinationStateDefinition.actions.onEnter()
 
       machine.value = destinationState
 

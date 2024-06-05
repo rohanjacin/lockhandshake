@@ -8,15 +8,16 @@ var ServerSalt;
 
 var counter = 0;
 
-ServerSalt = function ServerSalt () {
+ServerSalt = function ServerSalt (intf) {
     if (instance)
         return instance;
 
     counter++;
 
     instance = this;
+    this.intf = intf;
 
-    let ls = new ServerSeed();
+    let ls = new ServerSeed(this.intf);
     this.startTs = this.endTs = this.seed = 0;
 
     this.session = function () {

@@ -4,6 +4,7 @@ const server_pub = [
   '8842e62f0672909331716c78025f834c51d72a0bf32e66f4ab0cce4842d4fcae'
 ];
 
+const server_address = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const elliptic = require('elliptic');
 const ec = new elliptic.ec('secp256k1');
 const server_Pb = ec.curve.point(server_pub[0], server_pub[1]);
@@ -15,3 +16,4 @@ module.exports.server_Pb = server_Pb;
 module.exports.shared_key = shared_key;
 module.exports.lock_signature = lock_signature;
 module.exports.server_signature = server_signature;
+module.exports.server_address = server_address;

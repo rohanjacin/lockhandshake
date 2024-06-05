@@ -31,6 +31,12 @@ class LockHandshake extends EventEmitter {
 
     this.start = new BN();
     this.end = new BN();
+    this.match = false;
+    this.pin = '';
+    this.shared_key = '';
+    this.shared_msg_key = '';
+    this.guest_secret = '';
+
     if (this.intf != "web") {
       this.frame = new Frame();
     }
@@ -53,12 +59,15 @@ class LockHandshake extends EventEmitter {
             case 'Request':
               console.log("Request received:" + JSON.stringify(msg.nonce));
               this.Pb = msg.nonce;
+              this.validation = msg.validation;
               this.postEvent('request');
             break;
 
             case 'Response':
               console.log("Response received:" + JSON.stringify(msg.nonce));
               this.server_nounce = msg.nonce;
+              this.guest_secret = msg.secret;
+              this.validation = msg.validation;
               this.postEvent('response');
             break;        
           }
@@ -67,13 +76,13 @@ class LockHandshake extends EventEmitter {
     }
   }
 
-  session = function () {
+  session = async function () {
     this.counter = this.counter.add(this.counter_steps);
     this.time = new BN(Math.floor(Date.now()/1000), 16);
     console.log("new session " + "ts:" + this.time +
      " counter:" + this.counter + " Pb:" + JSON.stringify(this.Pb));
 
-    this.locknounce.session.call(null, this.Pb);
+    await this.locknounce.session.call(null, this.Pb, this.validation);
   }.bind(this);
 
   update = function () {
@@ -83,9 +92,10 @@ class LockHandshake extends EventEmitter {
     console.log("NOUNCE:" + JSON.stringify(this.nounce));
   }.bind(this);
 
-  solve = function (nounce) {
+  solve = async function (nounce, guest_secret, validation) {
      
-    return this.locknounce.solve.call(null, nounce);
+     console.log("NONCEEE:", nounce);
+    return await this.locknounce.solve.call(null, nounce, guest_secret, validation);
 
   }.bind(this);
 
@@ -93,7 +103,7 @@ class LockHandshake extends EventEmitter {
   postEvent = (e)=>{process.nextTick(() => {this.emit('state_event', e);})};
 };
 
-LockHandshake.prototype.registerRequest = function () {
+LockHandshake.prototype.registerRequest = async function () {
   let now = new BN(Math.floor(Date.now()/1000), 16);
 
   if (this.isRefreshed(now) == false) {
@@ -104,7 +114,8 @@ LockHandshake.prototype.registerRequest = function () {
   }
 
   this.start = now;
-  this.session.call();
+
+  await this.session.call();
   this.postEvent('accepted');
   return true;
 }
@@ -147,7 +158,7 @@ LockHandshake.prototype.sendChallenge = function () {
   return true;
 }
 
-LockHandshake.prototype.solveChallenge = function () {
+LockHandshake.prototype.solveChallenge = async function () {
   let now = new BN(Math.floor(Date.now()/1000), 16);
 
   if (this.isRefreshed(now) == false) {
@@ -158,14 +169,59 @@ LockHandshake.prototype.solveChallenge = function () {
   }
 
   let nounce = this.server_nounce;
-  let match = lock_hs.solve.call(null, nounce);
+  let guest_secret = this.guest_secret;
+
+  let ret = await lock_hs.solve.call(null, nounce, guest_secret, this.validation);
+
+  if ((ret.result == true) && (ret.pin) &&
+      (ret.shared_key) && (ret.shared_msg_key)) {
+    this.match = true;
+    this.pin = ret.pin;
+    this.shared_key = ret.shared_key;
+    this.shared_msg_key = ret.shared_msg_key;
+    console.log("this.pin:" + this.pin);
+    console.log("this.shared_key:" + this.shared_key);
+    console.log("this.shared_msg_key:" + this.shared_msg_key);
+  }
+  else {
+    this.match = false;
+    this.pin = '';
+    this.shared_key = '';
+    this.shared_msg_key = '';
+  }
 
   //Send server challenge only if Pm matches
-  if (match == true) {
-    lock_hs.postEvent('done');
+  if (this.match == true) {
+    lock_hs.postEvent('send');
   }
   else
     lock_hs.postEvent('idle');
+  return true;
+}
+
+LockHandshake.prototype.sendAck = function () {
+  let now = new BN(Math.floor(Date.now()/1000), 16);
+
+  if (this.isRefreshed(now) == false) {
+
+    console.log("LockHandshake FSM not refreshed");
+    this.postEvent('idle');
+    return false;
+  }
+
+  if (this.intf == "web") {
+    let ret = {type: 'Ack', result: this.match, pin: this.pin,
+                shared_key: this.shared_key,
+                shared_msg_key: this.shared_msg_key}
+
+    console.log("Sening Ack:" + JSON.stringify(ret));
+    this.ws.send(JSON.stringify(ret));
+  }
+  else {
+    this.frame.sendFrame('Ack', this.match);
+  }
+
+  this.postEvent('idle');
   return true;
 }
 
@@ -180,6 +236,7 @@ const machine = hsm.createMachine({
       onEnter() {
 
         //console.log('idle: onEnter')
+        lock_hs.match = false;
       },
 
       onExit() {
@@ -210,13 +267,13 @@ const machine = hsm.createMachine({
 
   request: {
 
-    actions: {
+     actions: {
 
-      onEnter() {
+      async onEnter() {
 
-        //console.log('request: onEnter')
+        console.log('request: onEnter')
 
-        lock_hs.registerRequest();
+        await lock_hs.registerRequest();
       },
 
       onExit() {
@@ -305,10 +362,10 @@ const machine = hsm.createMachine({
 
         target: 'ack',
 
-        action() {
+        async action() {
 
           console.log('transition action for "response" in "response_pending" state')
-          lock_hs.solveChallenge();
+          await lock_hs.solveChallenge();
         },
 
       },
@@ -323,13 +380,13 @@ const machine = hsm.createMachine({
 
       onEnter() {
 
-        //console.log('ack: onEnter')
+        console.log('ack: onEnter')
 
       },
 
       onExit() {
 
-        //console.log('ack: onExit')
+        console.log('ack: onExit')
 
       },
 
@@ -337,14 +394,14 @@ const machine = hsm.createMachine({
 
     transitions: {
 
-      done: {
+      send: {
 
         target: 'idle',
 
         action() {
 
-          console.log('transition action for "done" in "ack" state')
-
+          console.log('transition action for "send" in "ack" state')
+          lock_hs.sendAck();
         },
 
       },
@@ -370,12 +427,16 @@ if (lock_hs.intf != "web") {
   lock_hs.frame.on('request', (data) => {
 
     lock_hs.Pb = data.pb;
+    lock_hs.validation = data.validation;
+    console.log("lock_hs.validation:", lock_hs.validation);
     lock_hs.postEvent('request');
   });
 
   lock_hs.frame.on('response', (data) => {
 
-    lock_hs.server_nounce = data.nounce; //data.slice(0, 131);
+    lock_hs.server_nounce = data.nonce; //data.slice(0, 131);
+    lock_hs.guest_secret = data.secret;
+    lock_hs.validation = data.validation;
     lock_hs.postEvent('response');
   });
 }

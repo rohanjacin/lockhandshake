@@ -20,8 +20,8 @@ LockSalt = function LockSalt (intf) {
     let ls = new LockSeed(this.intf);
     this.startTs = this.endTs = this.seed = this.salt =0;
 
-    this.session = function () {
-    	//console.log("session salt:");
+    this.session = async function () {
+        //console.log("session salt:");
     }.bind(this);
 
     this.update = function () {

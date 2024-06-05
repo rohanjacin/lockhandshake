@@ -1,6 +1,6 @@
 var BN = require('bn.js');
 var hsm = require('./hsm.js');
-//var Frame = require('./socket/udp_lock.js');
+var Frame = require('./socket/udp_server.js');
 const util = require('util');
 const EventEmitter = require('events');
 var ServerNounce = require('./server_nounce.js');
@@ -13,54 +13,60 @@ const HS = {
 }
 
 class ServerHandshake extends EventEmitter {
-  constructor () {
+  constructor (intf) {
     if (ServerHandshake._instance) {
       throw new Error("ServerHandshake can't be instantiated more than once")
     }
 
     super();
     ServerHandshake._instance = this;
+    this.intf = intf;
 
-    this.WSS = new WebSocket.Server({ port : 8546});
+    if (this.intf == "web") {
+      this.WSS = new WebSocket.Server({ port : 8546});
 
-    this.WSS.on('connection', function connection(ws) {
-        this.handle(ws);
-    }.bind(this));
-
+      this.WSS.on('connection', function connection(ws) {
+          this.handle(ws);
+      }.bind(this));
+    }
     this.start = new BN();
     this.end = new BN();
-    //this.frame = new Frame();
 
+    if (this.intf != "web") {
+      this.frame = new Frame();
+    }
     this.counter = new BN(0, 16);
     this.counter_steps = new BN(1, 16);
     this.time = new BN(Math.floor(Date.now()/1000), 16);
-    this.servernounce = new ServerNounce(this.time, this.counter);
+    this.servernounce = new ServerNounce(this.time, this.counter, this.intf);
     this.nounce = this.servernounce.nounce;
     this.lock_nounce = 0;
     this.ws;
     this.lockprover = new LockProver();
 
-    this.handle = function (ws) {
-      this.ws = ws;
-      this.ws.on('error', console.error);
+    if (this.intf == "web") {
+      this.handle = function (ws) {
+        this.ws = ws;
+        this.ws.on('error', console.error);
 
-      this.ws.on('message', async function message(event) {
-        console.log('received: %s', event);
-        let msg = JSON.parse(event);
+        this.ws.on('message', async function message(event) {
+          console.log('received: %s', event);
+          let msg = JSON.parse(event);
 
-        switch(msg.type) {
-          case 'Request':
-            this.postEvent('start');
-          break;
+          switch(msg.type) {
+            case 'Request':
+              this.postEvent('start');
+            break;
 
-          case 'Challenge':
-            console.log("MSG:" + JSON.stringify(msg));
-            this.lock_nounce = msg.nonce;
-            this.postEvent('challenge');
-          break;          
-        }
-      }.bind(this));
-    };
+            case 'Challenge':
+              console.log("MSG:" + JSON.stringify(msg));
+              this.lock_nounce = msg.nonce;
+              this.postEvent('challenge');
+            break;
+          }
+        }.bind(this));
+      };
+    }
   }
 
   session = function () {
@@ -111,12 +117,16 @@ ServerHandshake.prototype.sendRequest = async function () {
   let {Pb} = await this.session.call();
   console.log("Pb:" + Pb.toString());
 
-  //Pb = Pb.toString();
   Pb = Pb.toBuffer(32);
-  let _Pb = Pb.toString();
-  //this.frame.sendFrame('Request', Pb);
-  this.postEvent('request');
-  return {type: "Request", nonce: Pb};
+
+  if (this.intf == "web") {
+    return {type: "Request", nonce: Pb};
+  }
+  else {
+    this.frame.sendFrame('Request', Pb);
+    this.postEvent('request');
+    return true;
+  }
 }
 
 ServerHandshake.prototype.waitChallenge = function () {
@@ -182,19 +192,21 @@ ServerHandshake.prototype.sendChallenge = async function () {
     return false;
   }
 
-  //this.frame.sendFrame('Response', this.nounce);
-  //this.postEventToContract("response", this.nounce);
+  if (this.intf == "web") {
+    // Create proof here
+    this.lockprover.update();
+    let { proof, publicSignals } = await this.lockprover.prove(); 
 
-  // Create proof here
-  console.log("\n\nproof start");
-  this.lockprover.update();
-  let { proof, publicSignals } = await this.lockprover.prove();  
-  console.log("\n\nproof done");
-  
-  let msg = {type: 'Response', nonce: this.nounce,
-      ownerproof: {proof, publicSignals}};
-  this.ws.send(JSON.stringify(msg));
-  this.postEvent('ack_pending');
+    let msg = {type: 'Response', nonce: this.nounce,
+        ownerproof: {proof, publicSignals}};
+    this.ws.send(JSON.stringify(msg));
+    this.postEvent('ack_pending');
+  }
+  else {
+    this.frame.sendFrame('Response', this.nounce);
+    //this.postEventToContract("response", this.nounce);
+  }
+
   return true;
 }
 
@@ -228,9 +240,12 @@ const machine = hsm.createMachine({
         async action() {
 
           console.log('transition action for "start" in "idle" state');
-          let {type, nonce} = await server_hs.sendRequest();
-          //console.log("RETT:"+ ret); 
-          server_hs.ws.send(JSON.stringify({type, nonce}));
+          
+          if (server_hs.intf == "web") {
+
+            let {type, nonce} = await server_hs.sendRequest();
+            server_hs.ws.send(JSON.stringify({type, nonce}));
+          }
         },
 
       },
@@ -409,23 +424,28 @@ const machine = hsm.createMachine({
 let state = machine.value
 
 //ServerHandshake.prototype.
-var server_hs = new ServerHandshake();
+var server_hs = new ServerHandshake(process.env.INTERFACE);
+
 
 server_hs.on('state_event', async (event) => {
 
   state = await machine.transition(state, event);
 });
 
-/*server_hs.frame.on('request', (data) => {
+if (server_hs.intf != "web") {
+  server_hs.frame.on('request', (data) => {
 
-  server_hs.postEvent('request');
-});
+    server_hs.postEvent('request');
+  });
 
-server_hs.frame.on('challenge', (data) => {
+  server_hs.frame.on('challenge', (data) => {
 
-  server_hs.lock_nounce = data.nounce; //data.slice(0, 131);
-  server_hs.postEvent('challenge');
-});
-*/
-//server_hs.sendRequest();
+    server_hs.lock_nounce = data.nounce; //data.slice(0, 131);
+    server_hs.postEvent('challenge');
+  });
+}
+
+if (server_hs.intf != "web")
+  server_hs.sendRequest();
+
 module.exports = ServerHandshake;

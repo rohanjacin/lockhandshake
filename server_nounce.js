@@ -12,14 +12,15 @@ var ServerNounce;
 
 var counter = 0;
 
-ServerNounce = function ServerNounce (ts, ct) {
+ServerNounce = function ServerNounce (ts, ct, intf) {
     if (instance)
         return instance;
 
     instance = this;
+    this.intf = intf;
 
-    let seed = new ServerSeed();
-	let salt = new ServerSalt();
+    let seed = new ServerSeed(this.intf);
+	let salt = new ServerSalt(this.intf);
 
 	this.rpv = this.salt = this.ts = this.seed = this.ct = this.lcs = 0;
 	this.init = function (_ts, _ct) {
@@ -109,10 +110,23 @@ ServerNounce.prototype.genNounce = function () {
 
 ServerNounce.prototype.solveNounce = async function (nounce, seed_obj, salt_obj) {
 
-	let nounce0 = new Buffer.from(nounce.slice(0, 65));
-	let nounce1 = new Buffer.from(nounce.slice(65, 97));
-	let seed = new Buffer.from(nounce.slice(97, 162));
-	let counter = new Buffer.from(nounce.slice(162, 163));
+	let nounce0;
+	let nounce1;
+	let seed;
+	let counter;
+
+	if (this.intf == "web") {
+		nounce0 = new Buffer.from(nounce.slice(0, 65));
+		nounce1 = new Buffer.from(nounce.slice(65, 97));
+		seed = new Buffer.from(nounce.slice(97, 162));
+		counter = new Buffer.from(nounce.slice(162, 163));
+	}
+	else {
+		nounce0 = new Buffer.from(nounce.data.slice(0, 65));
+		nounce1 = new Buffer.from(nounce.data.slice(65, 97));
+		seed = new Buffer.from(nounce.data.slice(97, 162));
+		counter = new Buffer.from(nounce.data.slice(162, 163));
+	}
 
 	let lock_pub = nounce0;
 	//let lock_pub = new BN(nounce0, 16);

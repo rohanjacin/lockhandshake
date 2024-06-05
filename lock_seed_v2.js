@@ -3,6 +3,9 @@ const PreShared = require('./lock_preshared.js');
 const Private = require('./lock_private.js');
 const BN = require('bn.js');
 const INTERFACE_S = "web";
+const hotp = require('hotp');
+const { hkdf } = require('@panva/hkdf');
+const createHash = require( 'crypto' ).createHash;
 
 var pm;
 var LockSeed;
@@ -27,7 +30,7 @@ LockSeed = function LockSeed (intf) {
 	console.log("PM(lock).x:" + _pm.x);
 	console.log("PM(lock).y:" + _pm.y);
 
-	this.session = function (serverPb) {
+	this.session = async function (serverPb) {
 
 		console.log("serverPb:" + JSON.stringify(serverPb));
 		let spub;
@@ -59,8 +62,9 @@ LockSeed = function LockSeed (intf) {
 		this.Pm = C.point(this.pswd[0], this.pswd[1]);
 		console.log("PM(lock).x:" + this.Pm.x);
 		console.log("PM(lock).y:" + this.Pm.y);
+
 		if (this.Pm.validate()) {
-			//console.log("this.Pm Valid point on curve");
+			console.log("this.Pm Valid point on curve");
 		}
 		else {
 			console.log("this.Pm InValid point on curve");
@@ -144,7 +148,7 @@ LockSeed.prototype.genSeed = function () {
 	return ret;
 }
 
-LockSeed.prototype.retrieveSeed = function (pub, seed) {
+LockSeed.prototype.retrieveSeed = async function (pub, seed, guest_secret) {
 
 	let cipher_point_1 = this.hscurve.createPointFromPublic('secp256k1', pub);
 	let cipher_point_2 = this.hscurve.createPointFromPublic('secp256k1', seed);
@@ -186,6 +190,8 @@ LockSeed.prototype.retrieveSeed = function (pub, seed) {
 
 	console.log("Pm.x:" + Pm.x);
 	console.log("Pm.y:" + Pm.y);
+	console.log("this.Pm.x:" + this.Pm.x);
+	console.log("this.Pm.y:" + this.Pm.y);
 
 	if (Pm.validate()) {
 		console.log("Pm valid point on curve");
@@ -195,24 +201,55 @@ LockSeed.prototype.retrieveSeed = function (pub, seed) {
 		return ret;
 	}
 
-	let secret = this.hscurve.retrieveRandPrivVar('secp256k1', cipher_point_1);
+	console.log("(this.Pm.x.eq(Pm.x):" + (this.Pm.x.eq(Pm.x)));
+	console.log("(this.Pm.y.eq(Pm.y):" + (this.Pm.y.eq(Pm.y)));
 
-	//console.log("SECRET:" + JSON.stringify(secret));
-	if (secret.validate()) {
-		//console.log("Secret Valid point on curve");
-	}
-	else {
-		console.log("Secret InValid point on curve");
-		return;
-	}
-
-	if (this.Pm == Pm) {
+	if ((this.Pm.x.eq(Pm.x)) && (this.Pm.y.eq(Pm.y))) {
 		console.log("Matched Pm.x:" + Pm.x);
-		console.log("Matched Pm.y:" + Pm.y);		
-	}
-	//this.server_pub = cipher_point_2.x;
+		console.log("Matched Pm.y:" + Pm.y);
 
-	return {Pm, s_seed: this.server_seed};
+		if (guest_secret) {
+			// Derive Guest key and Guest messaging key
+			let shared_secret_lock = this.hscurve.encodePointForCipher('secp256k1', cipher_point_2);
+			let shared_secret_server = this.hscurve.encodePointForCipher('secp256k1', shared);
+			let first_part = new BN(shared_secret_lock, 16);
+			first_part = first_part.toString();
+			let second_part = new BN(shared_secret_server, 16);
+			second_part = second_part.toString();
+
+			console.log("shared_secret_lock:", first_part);
+			console.log("shared_secret_server:", second_part);
+
+			let hash = createHash('sha256');
+			hash.update(first_part);
+			hash.update(second_part);
+			let key = hash.digest('hex');
+			let _salt = guest_secret;
+			let _info = 'info';
+
+			console.log("key:" +  key);
+			console.log("_salt:" +  _salt);
+			console.log("_info:" +  _info);
+
+			let shared_key = await hkdf('sha256', key, _salt, _info, 32);
+
+			_salt = 'guestmsgkey';
+			_info = 'info';
+
+			let shared_msg_key = await hkdf('sha256', key, _salt, _info, 32);
+
+			let pin = hotp(shared_key, 1, {digits: 8});
+
+			shared_key = new Buffer.from(shared_key, 32);
+			shared_msg_key = new Buffer.from(shared_msg_key, 32);
+			return {result:true, pin, shared_key, shared_msg_key};
+
+		}
+		else
+			return {result:true};
+	}
+
+	return {result: false};
 }
 
 module.exports = LockSeed;

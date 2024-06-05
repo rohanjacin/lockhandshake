@@ -10,13 +10,14 @@ var ServerSeed;
 
 var counter = 0;
 
-ServerSeed = function ServerSeed () {
+ServerSeed = function ServerSeed (intf) {
     if (instance)
         return instance;
 
     counter++;
 
     instance = this;
+	this.intf = intf;
     this.hscurve = new HSCurve();
 	var C = this.hscurve.getCurve('secp256k1');
 
